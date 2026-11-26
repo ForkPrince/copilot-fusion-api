@@ -286,6 +286,44 @@ test("routing failure falls back to a catalog model without a session token", as
   }
 })
 
+test("strict mode refuses a plain-model fallback and reports why routing failed", async () => {
+  const failing = (url, init, body) => url.includes("/auto")
+    ? new Response("nope", { status: 503 })
+    : defaultHandler(url, init, body)
+  const { server, url, calls } = await start({ strict: true }, failing)
+  try {
+    const response = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "copilot-fusion", messages: [{ role: "user", content: "hi" }],
+    }))
+    assert.equal(response.status, 503)
+    const error = (await response.json()).error
+    assert.equal(error.code, "fusion_unavailable")
+    assert.match(error.message, /route unavailable \(HTTP 503\)/)
+    assert.match(error.message, /FUSION_STRICT=0/)
+    assert.equal(calls.some((c) => c.url.includes("/chat/completions")), false)
+  } finally {
+    await stop(server)
+  }
+})
+
+test("strict mode does not switch to a plain model after a routed 400", async () => {
+  const rejecting = (url, init, body) => url.includes("/chat/completions")
+    ? json({ error: { message: "The requested model is not supported.", code: "model_not_supported" } }, 400)
+    : defaultHandler(url, init, body)
+  const { server, url, calls } = await start({ strict: true }, rejecting)
+  try {
+    const response = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "copilot-fusion", messages: [{ role: "user", content: "hi" }],
+    }))
+    assert.equal(response.status, 400)
+    const inferences = calls.filter((c) => c.url.includes("/chat/completions"))
+    assert.equal(inferences.length, 1)
+    assert.equal(inferences[0].init.headers["copilot-session-token"], "session-tok-1")
+  } finally {
+    await stop(server)
+  }
+})
+
 test("a routed upstream 400 is retried once on the fallback model", async () => {
   let inferenceCount = 0
   const flaky = (url, init, body) => {

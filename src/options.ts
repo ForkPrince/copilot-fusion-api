@@ -10,6 +10,8 @@ export interface FusionOptions {
   readonly anchorModel?: string
   /** Sticky per conversation (default) or a fresh pick for every prompt. */
   readonly route: RouteMode
+  /** Never downgrade to a plain catalog model when Fusion routing fails. */
+  readonly strict: boolean
   /** Drop `temperature` from routed requests (some routed models 400 on it). */
   readonly stripTemperature: boolean
   /** `/auto` request timeout. */
@@ -22,6 +24,7 @@ export interface FusionOptions {
 
 const DEFAULTS = {
   route: "conversation",
+  strict: true,
   stripTemperature: true,
   timeoutMs: 5_000,
   skewMs: 5 * 60_000,
@@ -94,6 +97,7 @@ export function parseFusionOptions(raw: unknown, env: NodeJS.ProcessEnv = proces
   return {
     anchorModel: pickString("anchorModel") ?? stringValue(env, ["COPILOT_ANCHOR_MODEL"]),
     route: rawRoute === "prompt" ? "prompt" : "conversation",
+    strict: pickBoolean("strict", boolValue(env, ["FUSION_STRICT"], DEFAULTS.strict)),
     stripTemperature: pickBoolean("stripTemperature", boolValue(env, ["FUSION_STRIP_TEMPERATURE"], DEFAULTS.stripTemperature)),
     timeoutMs: pickNumber("timeoutMs", intValue(env, ["FUSION_TIMEOUT_MS"], DEFAULTS.timeoutMs, 500, 60_000), 500, 60_000),
     skewMs: pickNumber("skewMs", intValue(env, ["FUSION_SKEW_MS"], DEFAULTS.skewMs, 0, 24 * 60 * 60_000), 0, 24 * 60 * 60_000),

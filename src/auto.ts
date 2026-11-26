@@ -154,7 +154,7 @@ export class CopilotClient {
     const payload: Record<string, unknown> = {
       prompt: input.prompt.trim() === "" ? "Continue." : input.prompt,
       tier: input.tier,
-      multi_turn: { routing_intent: "anchor", turns_since_anchor: input.turnsSinceAnchor },
+      multi_turn: { turns_since_anchor: input.turnsSinceAnchor },
     }
     if (input.hasImage) payload.has_image = true
     const result = await this.postJson(`${input.baseURL}/auto`, input.token, payload)

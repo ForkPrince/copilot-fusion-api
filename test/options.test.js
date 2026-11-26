@@ -14,6 +14,7 @@ test("custom options parsed", () => {
   const custom = parseFusionOptions({
     anchorModel: "mai-code-1.1-flash",
     route: "prompt",
+    strict: false,
     stripTemperature: false,
     timeoutMs: 9000,
     skewMs: 60000,
@@ -21,6 +22,7 @@ test("custom options parsed", () => {
   }, EMPTY)
   assert.equal(custom.anchorModel, "mai-code-1.1-flash")
   assert.equal(custom.route, "prompt")
+  assert.equal(custom.strict, false)
   assert.equal(custom.stripTemperature, false)
   assert.equal(custom.timeoutMs, 9000)
   assert.equal(custom.skewMs, 60000)
@@ -36,6 +38,7 @@ test("out-of-range values fall back", () => {
 test("routing options can come from the environment", () => {
   const parsed = parseFusionOptions(undefined, {
     FUSION_ROUTE: "prompt",
+    FUSION_STRICT: "0",
     FUSION_STRIP_TEMPERATURE: "0",
     FUSION_TIMEOUT_MS: "9000",
     FUSION_SKEW_MS: "60000",
@@ -43,6 +46,7 @@ test("routing options can come from the environment", () => {
     COPILOT_ANCHOR_MODEL: "gpt-6-terra",
   })
   assert.equal(parsed.route, "prompt")
+  assert.equal(parsed.strict, false)
   assert.equal(parsed.stripTemperature, false)
   assert.equal(parsed.timeoutMs, 9000)
   assert.equal(parsed.skewMs, 60000)

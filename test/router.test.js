@@ -59,9 +59,11 @@ test("sticky: one /auto call per conversation; later turns reuse the pinned rout
   const body = JSON.parse(String(calls[0].init.body))
   assert.equal(body.tier, "hydrafusion")
   assert.equal(body.prompt, BASE_REQ.text)
-  assert.equal(body.multi_turn.routing_intent, "anchor")
+  assert.equal(body.multi_turn.turns_since_anchor, 0)
+  assert.equal("routing_intent" in body.multi_turn, false)
   assert.equal(calls[0].init.headers.Authorization, "Bearer gho_test")
   assert.equal(calls[0].init.headers["Copilot-Integration-Id"], "vscode-chat")
+  assert.equal(calls[0].init.headers["X-GitHub-Api-Version"], "2026-09-21")
 })
 
 test("different variant routes separately", async () => {

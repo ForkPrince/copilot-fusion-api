@@ -113,4 +113,4 @@ export function parseFusionMeta(payload: unknown): FusionMetaTiers | undefined {
 }
 
 /** /auto `X-GitHub-Api-Version` used by the current first-party clients. */
-export const COPILOT_API_VERSION = "2026-08-01"
+export const COPILOT_API_VERSION = "2026-09-21"

@@ -141,8 +141,10 @@ export function createServer(options: ServerOptions): Server {
     const sessionID = sessionIdFrom(req.headers, body)
     const meta = await router.getMeta(credentials.baseURL, credentials.token).catch(() => undefined)
     const resolved = resolveWireTier(variant, meta?.byId)
+    let routeFailure: string | undefined
     if (!resolved) {
-      warn(`Fusion tier '${variant}' is disabled for this account — using the fallback model`)
+      routeFailure = `Fusion tier '${variant}' is disabled for this account`
+      warn(routeFailure)
     }
 
     let modelId: string | undefined
@@ -169,11 +171,22 @@ export function createServer(options: ServerOptions): Server {
         log(`fusion: ${variant} -> ${modelId}${resolved.degraded ? " (degraded tier)" : ""}`)
       } else {
         if (result.code === "http_401" || result.code === "http_403") options.creds.invalidate()
-        warn(`fusion route unavailable (${result.reason}) — using the fallback model`)
+        routeFailure = `route unavailable (${result.reason})`
+        warn(`fusion ${routeFailure}`)
       }
     }
 
     if (!modelId) {
+      if (options.strict) {
+        sendError(
+          res,
+          503,
+          `Fusion could not route this request: ${routeFailure ?? "no routable prompt in the request"}. ` +
+            `Set FUSION_STRICT=0 to allow a plain-model fallback.`,
+          "fusion_unavailable",
+        )
+        return
+      }
       modelId = await router.resolveAnchor(credentials.baseURL, credentials.token, wire, options.anchorModel)
     }
 
@@ -205,7 +218,7 @@ export function createServer(options: ServerOptions): Server {
     })
 
     let upstream = await attempt(modelId, sessionToken, routed)
-    if (!upstream.ok && routed && RETRIABLE_STATUS.has(upstream.status)) {
+    if (!upstream.ok && routed && RETRIABLE_STATUS.has(upstream.status) && !options.strict) {
       warn(`routed request failed (HTTP ${upstream.status}) — retrying on the fallback model`)
       if (upstream.status === 401 || upstream.status === 403) {
         options.creds.invalidate()
