@@ -167,35 +167,22 @@ test("/auto failure with no prior route reports ok:false without leaking the bod
   assert.doesNotMatch(result.reason, /blah blah blah/)
 })
 
-test("cross-wire pick is rejected (responses wire vs messages-only model)", async () => {
+test("cross-wire pick is kept and its endpoints are carried for bridging", async () => {
   const { fetchImpl } = mockFetch([
     ["/auto", () => jsonResponse(autoResponse({ selected_model: { id: "claude-opus-5.5", supported_endpoints: ["/v1/messages"] } }))],
   ])
   const router = new FusionRouter({ fetchImpl })
   const result = await router.route(BASE_REQ) // wire: responses
-  assert.equal(result.ok, false)
-  assert.match(result.reason, /does not serve/)
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.entry.endpoints, ["/v1/messages"])
 })
 
-test("wire check falls back to /models catalog when /auto omits endpoints", async () => {
-  const { fetchImpl, calls } = mockFetch([
-    ["/auto", () => jsonResponse({ session_token: "tok", expires_at: FUTURE, selected_model: { id: "mai-code-1.1-flash" } })],
-    ["/models", () => jsonResponse({ data: [{ id: "mai-code-1.1-flash", supported_endpoints: ["/chat/completions"] }] })],
-  ])
-  const router = new FusionRouter({ fetchImpl })
-  const result = await router.route(BASE_REQ) // wire: responses
-  assert.equal(result.ok, false)
-  assert.ok(calls.some((c) => c.url.includes("/models")))
-})
-
-test("wire check passes when catalog serves the wire", async () => {
+test("a pick without endpoints is still usable", async () => {
   const { fetchImpl } = mockFetch([
     ["/auto", () => jsonResponse({ session_token: "tok", expires_at: FUTURE, selected_model: { id: "mai-code-1.1-flash" } })],
-    ["/models", () => jsonResponse({ data: [{ id: "mai-code-1.1-flash", supported_endpoints: ["/responses"] }] })],
   ])
   const router = new FusionRouter({ fetchImpl })
-  const result = await router.route(BASE_REQ)
-  assert.equal(result.ok, true)
+  assert.equal((await router.route(BASE_REQ)).ok, true)
 })
 
 test("messages wire accepts /v1/messages", async () => {

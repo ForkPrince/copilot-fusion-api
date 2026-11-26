@@ -33,7 +33,7 @@ Open the URL it prints and enter the code. The CLI saves a credential locally an
 copilot-fusion-api serve
 ```
 
-It listens on `127.0.0.1:8080` and serves `/v1/chat/completions` and `/v1/responses`, both with streaming. Point an OpenAI client at it:
+It listens on `127.0.0.1:8080` and serves `/v1/chat/completions` and `/v1/responses`, both with streaming. Fusion may pick a model that only serves `/responses`; the server translates the wire in both directions, so chat clients keep working. Point an OpenAI client at it:
 
 ```js
 import OpenAI from "openai"

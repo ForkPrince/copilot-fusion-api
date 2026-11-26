@@ -176,11 +176,6 @@ export class FusionRouter {
       return { ok: false, reason: `fusion picked ${auto.modelId} without vision support`, code: "no_vision" }
     }
 
-    const allowed = await this.client.supportsWire(baseURL, token, auto.modelId, request.wire, auto.endpoints)
-    if (allowed === false) {
-      return this.previousOrFail(cached, `selected model ${auto.modelId} does not serve ${request.wire} wire`, "wrong_wire")
-    }
-
     if (this.options.log) {
       this.log(
         `fusion /auto picked ${auto.modelId}${auto.hydraScores ? `; hydra_scores=${JSON.stringify(auto.hydraScores)}` : ""}${auto.discountedCosts ? `; discounted_costs=${JSON.stringify(auto.discountedCosts)}` : ""}`,
@@ -192,6 +187,7 @@ export class FusionRouter {
       sessionToken: auto.sessionToken,
       expiresAtMs: auto.expiresAtMs,
       vision: auto.vision,
+      endpoints: auto.endpoints,
       turns: previousTurns + 1,
     }
     const key = FusionRouter.key(request.credsKey, sessionID, variant, route, text)

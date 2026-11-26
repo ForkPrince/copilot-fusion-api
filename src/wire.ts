@@ -27,6 +27,35 @@ export function wireForEndpoint(pathname: string): Wire | undefined {
   return undefined
 }
 
+/** Wires advertised by a `/auto` pick or a `/models` catalog entry. */
+export function wiresFromEndpoints(endpoints: unknown): ReadonlySet<Wire> {
+  const result = new Set<Wire>()
+  if (!Array.isArray(endpoints)) return result
+  for (const raw of endpoints) {
+    if (typeof raw !== "string") continue
+    const path = raw.replace(/\/+$/, "")
+    if (path === "/chat/completions" || path === "/v1/chat/completions") result.add("chat")
+    else if (path === "/responses" || path === "/interactions") result.add("responses")
+    else if (path === "/v1/messages" || path === "/messages") result.add("messages")
+  }
+  return result
+}
+
+/**
+ * Upstream wire for a routed model. Prefer the wire the client asked for when
+ * the model serves it; otherwise use one the model actually advertises.
+ */
+export function wireForRoutedModel(endpoints: unknown, modelId: string, requested: Wire): Wire {
+  const served = wiresFromEndpoints(endpoints)
+  if (served.has(requested)) return requested
+  if (served.size > 0) {
+    for (const candidate of ["chat", "responses", "messages"] as const) {
+      if (served.has(candidate)) return candidate
+    }
+  }
+  return wireOfModelId(modelId)
+}
+
 /** Best-effort wire guess for a model id (used for fallback anchor picks). */
 export function wireOfModelId(modelId: string): Wire {
   if (/^(claude-|anthropic)/.test(modelId)) return "messages"

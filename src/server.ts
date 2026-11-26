@@ -16,9 +16,10 @@ import { timingSafeEqual } from "node:crypto"
 import { FusionRouter } from "./router.js"
 import type { CopilotCredentials, CredentialProvider } from "./creds.js"
 import { copilotHeaders, describeError, type FetchLike } from "./http.js"
+import { chatToResponses, responsesToChat, ResponsesToChatStream } from "./bridge.js"
 import { extractPromptFromBody } from "./prompt.js"
 import { COPILOT_API_VERSION, resolveWireTier } from "./tiers.js"
-import { wireForEndpoint, wirePath, type Wire } from "./wire.js"
+import { wireForEndpoint, wireForRoutedModel, wirePath, type Wire } from "./wire.js"
 import {
   effortFromBody,
   isKnownModel,
@@ -150,6 +151,7 @@ export function createServer(options: ServerOptions): Server {
     let modelId: string | undefined
     let sessionToken: string | undefined
     let routed = false
+    let upstreamWire: Wire = wire
     const prompt = extractPromptFromBody(body)
     if (resolved && prompt && (prompt.text.trim() || prompt.image)) {
       const result = await router.route({
@@ -168,7 +170,11 @@ export function createServer(options: ServerOptions): Server {
         modelId = result.entry.modelId
         sessionToken = result.entry.sessionToken
         routed = true
-        log(`fusion: ${variant} -> ${modelId}${resolved.degraded ? " (degraded tier)" : ""}`)
+        upstreamWire = wireForRoutedModel(result.entry.endpoints, modelId, wire)
+        log(
+          `fusion: ${variant} -> ${modelId}${resolved.degraded ? " (degraded tier)" : ""}` +
+            (upstreamWire === wire ? "" : ` (bridging ${wire} -> ${upstreamWire})`),
+        )
       } else {
         if (result.code === "http_401" || result.code === "http_403") options.creds.invalidate()
         routeFailure = `route unavailable (${result.reason})`
@@ -191,11 +197,19 @@ export function createServer(options: ServerOptions): Server {
     }
 
     const isStream = body.stream === true
-    const attempt = async (targetModel: string, targetSessionToken?: string, isRouted = false): Promise<Response> => {
-      const nextBody: Record<string, unknown> = { ...body, model: targetModel }
+    let lastAttemptBridged = false
+    const attempt = async (
+      targetModel: string,
+      targetSessionToken?: string,
+      isRouted = false,
+      targetWire: Wire = wire,
+    ): Promise<Response> => {
+      lastAttemptBridged = isRouted && wire === "chat" && targetWire === "responses"
+      let nextBody: Record<string, unknown> = { ...body, model: targetModel }
       // `session_id` is our routing hint, not an OpenAI/Copilot field.
       delete nextBody.session_id
       if (isRouted && options.stripTemperature !== false) delete nextBody.temperature
+      if (lastAttemptBridged) nextBody = chatToResponses(nextBody) as Record<string, unknown>
       const headers: Record<string, string> = {
         ...copilotHeaders(credentials.token, COPILOT_API_VERSION),
         Accept: isStream ? "text/event-stream" : "application/json",
@@ -203,7 +217,7 @@ export function createServer(options: ServerOptions): Server {
       if (targetSessionToken) headers["Copilot-Session-Token"] = targetSessionToken
       const beta = req.headers["openai-beta"]
       if (typeof beta === "string") headers["OpenAI-Beta"] = beta
-      const target = `${credentials.baseURL.replace(/\/+$/, "")}${wirePath(wire)}`
+      const target = `${credentials.baseURL.replace(/\/+$/, "")}${wirePath(targetWire)}`
       return fetchImpl(new Request(target, {
         method: "POST",
         headers,
@@ -217,7 +231,7 @@ export function createServer(options: ServerOptions): Server {
       if (!res.writableEnded) controller.abort()
     })
 
-    let upstream = await attempt(modelId, sessionToken, routed)
+    let upstream = await attempt(modelId, sessionToken, routed, upstreamWire)
     if (!upstream.ok && routed && RETRIABLE_STATUS.has(upstream.status) && !options.strict) {
       warn(`routed request failed (HTTP ${upstream.status}) — retrying on the fallback model`)
       if (upstream.status === 401 || upstream.status === 403) {
@@ -225,7 +239,7 @@ export function createServer(options: ServerOptions): Server {
         credentials = await options.creds.get({ force: true })
       }
       const fallback = await router.resolveAnchor(credentials.baseURL, credentials.token, wire, options.anchorModel)
-      upstream = await attempt(fallback, undefined, false)
+      upstream = await attempt(fallback, undefined, false, wire)
     }
 
     if (!upstream.ok) {
@@ -238,9 +252,10 @@ export function createServer(options: ServerOptions): Server {
     }
 
     const contentType = upstream.headers.get("content-type")
+    const bridged = lastAttemptBridged
     if (isStream) {
       res.writeHead(200, {
-        "content-type": contentType ?? "text/event-stream; charset=utf-8",
+        "content-type": bridged ? "text/event-stream; charset=utf-8" : contentType ?? "text/event-stream; charset=utf-8",
         "cache-control": "no-cache, no-transform",
         connection: "keep-alive",
         "x-accel-buffering": "no",
@@ -250,16 +265,36 @@ export function createServer(options: ServerOptions): Server {
         return
       }
       const reader = upstream.body.getReader()
+      const decoder = new TextDecoder()
+      const translator = bridged
+        ? new ResponsesToChatStream({ id: `chatcmpl-${Date.now()}`, model: String(body.model) })
+        : undefined
       try {
         for (;;) {
           const { done, value } = await reader.read()
           if (done) break
-          if (!res.destroyed) res.write(value)
+          if (res.destroyed) continue
+          if (translator) {
+            const converted = translator.push(decoder.decode(value, { stream: true }))
+            if (converted) res.write(converted)
+          } else {
+            res.write(value)
+          }
+        }
+        if (translator) {
+          const tail = translator.flush()
+          if (tail) res.write(tail)
         }
       } finally {
         reader.releaseLock()
       }
       res.end()
+      return
+    }
+
+    if (bridged) {
+      const payload: unknown = await upstream.json()
+      sendJson(res, 200, responsesToChat(payload, String(body.model)))
       return
     }
 

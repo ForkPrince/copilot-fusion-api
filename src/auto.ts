@@ -13,6 +13,8 @@ export interface RouteEntry {
   readonly expiresAtMs: number
   /** vision support of the picked model: null = unknown */
   readonly vision: boolean | null
+  /** supported_endpoints from /auto, used to pick the upstream wire */
+  readonly endpoints: unknown
   turns: number
 }
 

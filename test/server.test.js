@@ -267,6 +267,82 @@ test("missing Copilot login returns a 503 with an actionable message", async () 
   }
 })
 
+test("a Responses-only Fusion pick is bridged back to chat completions", async () => {
+  const bridging = (url, init, body) => {
+    if (url.includes("/auto")) {
+      return json({ session_token: "session-tok-1", expires_at: FUTURE, selected_model: {
+        id: "gpt-6-luna", supported_endpoints: ["/responses"], capabilities: { input: ["text"] },
+      } })
+    }
+    if (url.endsWith("/responses")) {
+      return json({
+        id: "resp-1",
+        output: [{ type: "message", content: [{ type: "output_text", text: "hello from fusion" }] }],
+        usage: { input_tokens: 3, output_tokens: 4, total_tokens: 7 },
+      })
+    }
+    return defaultHandler(url, init, body)
+  }
+  const { server, url, calls } = await start({}, bridging)
+  try {
+    const response = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "copilot-fusion", messages: [{ role: "user", content: "hi" }],
+    }))
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.equal(body.model, "copilot-fusion")
+    assert.equal(body.choices[0].message.content, "hello from fusion")
+    assert.equal(body.usage.total_tokens, 7)
+
+    const inference = calls.find((c) => c.url.endsWith("/responses"))
+    assert.ok(inference, "request went to the model's advertised wire")
+    assert.equal(inference.body.model, "gpt-6-luna")
+    assert.equal(inference.body.messages, undefined)
+    assert.deepEqual(inference.body.input, [{ role: "user", content: "hi" }])
+    assert.equal(inference.init.headers["copilot-session-token"], "session-tok-1")
+  } finally {
+    await stop(server)
+  }
+})
+
+test("a bridged streaming response is converted to chat SSE chunks", async () => {
+  const chunks = [
+    { type: "response.output_text.delta", delta: "hel" },
+    { type: "response.output_text.delta", delta: "lo" },
+    { type: "response.completed" },
+  ]
+  const streaming = (url, init, body) => {
+    if (url.includes("/auto")) {
+      return json({ session_token: "session-tok-1", expires_at: FUTURE, selected_model: {
+        id: "gpt-6-luna", supported_endpoints: ["/responses"], capabilities: { input: ["text"] },
+      } })
+    }
+    if (url.endsWith("/responses")) {
+      const encoder = new TextEncoder()
+      return new Response(new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+          controller.close()
+        },
+      }), { headers: { "content-type": "text/event-stream" } })
+    }
+    return defaultHandler(url, init, body)
+  }
+  const { server, url } = await start({}, streaming)
+  try {
+    const response = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "copilot-fusion", messages: [{ role: "user", content: "hi" }], stream: true,
+    }))
+    assert.equal(response.status, 200)
+    const text = await response.text()
+    assert.match(text, /"content":"hel"/)
+    assert.match(text, /"content":"lo"/)
+    assert.match(text, /\[DONE\]/)
+  } finally {
+    await stop(server)
+  }
+})
+
 test("routing failure falls back to a catalog model without a session token", async () => {
   const failing = (url, init, body) => url.includes("/auto")
     ? new Response("nope", { status: 503 })
