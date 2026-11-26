@@ -147,6 +147,8 @@ interface PendingCall {
   readonly index: number
   id: string
   name: string
+  /** argument fragments already emitted as deltas */
+  args: string
 }
 
 /** Stateful SSE translator: Responses events in, Chat Completions chunks out. */
@@ -167,6 +169,7 @@ export class ResponsesToChatStream {
         index: this.nextCallIndex++,
         id: text(callId) || text(itemId) || key,
         name: text(name) || "function",
+        args: "",
       }
       this.calls.set(key, call)
     }
@@ -243,16 +246,18 @@ export class ResponsesToChatStream {
         const call = this.ensureCall(item.id, item.call_id, item.name)
         return this.toolCallChunk(call, "")
       }
-      case "response.function_call_arguments.delta":
-        return this.toolCallChunk(
-          this.ensureCall(event.item_id, event.call_id, event.name),
-          text(event.delta),
-        )
-      case "response.function_call_arguments.done":
-        return this.toolCallChunk(
-          this.ensureCall(event.item_id, event.call_id, event.name),
-          text(event.arguments),
-        )
+      case "response.function_call_arguments.delta": {
+        const call = this.ensureCall(event.item_id, event.call_id, event.name)
+        call.args += text(event.delta)
+        return this.toolCallChunk(call, text(event.delta))
+      }
+      case "response.function_call_arguments.done": {
+        const call = this.ensureCall(event.item_id, event.call_id, event.name)
+        // `done` repeats the full argument string; deltas already carried it.
+        if (call.args.length > 0) return ""
+        call.args = text(event.arguments)
+        return this.toolCallChunk(call, call.args)
+      }
       case "response.completed":
       case "response.failed":
         return this.chunk({}, "stop") + "data: [DONE]\n\n"

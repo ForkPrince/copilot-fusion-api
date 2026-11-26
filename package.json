@@ -39,6 +39,7 @@
   "scripts": {
     "build": "node node_modules/typescript/bin/tsc -p tsconfig.json",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
+    "check": "npm run typecheck && npm test",
     "test": "npm run build && node --test --test-concurrency=1 \"test/*.test.js\"",
     "start": "node dist/cli.js serve",
     "login": "node dist/cli.js login",

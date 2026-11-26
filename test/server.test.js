@@ -155,6 +155,7 @@ test("chat completions route through /auto and rewrite the upstream request", as
     assert.equal(inference.init.headers["copilot-session-token"], "session-tok-1")
     assert.equal(inference.init.headers.authorization, "Bearer copilot_tok")
     assert.equal(inference.init.headers["copilot-integration-id"], "vscode-chat")
+    assert.equal(inference.init.headers["x-github-api-version"], "2026-09-21")
   } finally {
     await stop(server)
   }
@@ -305,6 +306,81 @@ test("a Responses-only Fusion pick is bridged back to chat completions", async (
   }
 })
 
+test("bridge wire falls back to the model-id heuristic when /auto omits endpoints", async () => {
+  const heuristic = (url, init, body) => {
+    if (url.includes("/auto")) {
+      return json({ session_token: "session-tok-1", expires_at: FUTURE, selected_model: { id: "gpt-6-luna" } })
+    }
+    if (url.endsWith("/responses")) {
+      return json({ id: "resp-1", output: [{ type: "message", content: [{ type: "output_text", text: "heuristic route" }] }] })
+    }
+    return defaultHandler(url, init, body)
+  }
+  const { server, url, calls } = await start({}, heuristic)
+  try {
+    const response = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "copilot-fusion", messages: [{ role: "user", content: "hi" }],
+    }))
+    assert.equal(response.status, 200)
+    assert.equal((await response.json()).choices[0].message.content, "heuristic route")
+    assert.ok(calls.some((c) => c.url.endsWith("/responses")))
+  } finally {
+    await stop(server)
+  }
+})
+
+test("a bridged non-streaming response converts tool calls", async () => {
+  const withTool = (url, init, body) => {
+    if (url.includes("/auto")) {
+      return json({ session_token: "session-tok-1", expires_at: FUTURE, selected_model: {
+        id: "gpt-6-luna", supported_endpoints: ["/responses"], capabilities: { input: ["text"] },
+      } })
+    }
+    if (url.endsWith("/responses")) {
+      return json({ id: "resp-2", output: [{
+        type: "function_call", call_id: "c-7", name: "bash", arguments: '{"command":"pwd"}',
+      }] })
+    }
+    return defaultHandler(url, init, body)
+  }
+  const { server, url } = await start({}, withTool)
+  try {
+    const response = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "copilot-fusion", messages: [{ role: "user", content: "run pwd" }],
+    }))
+    assert.equal(response.status, 200)
+    const body = await response.json()
+    assert.deepEqual(body.choices[0].message.tool_calls, [{
+      id: "c-7", type: "function", function: { name: "bash", arguments: '{"command":"pwd"}' },
+    }])
+    assert.equal(body.choices[0].finish_reason, "tool_calls")
+  } finally {
+    await stop(server)
+  }
+})
+
+test("strict mode reports a disabled tier explicitly", async () => {
+  const disabled = (url, init, body) => {
+    if (url.includes("/meta")) {
+      return json({ auto: { tiers: [{ id: "balance", type: "fusion", status: { enabled: false } }] } })
+    }
+    return defaultHandler(url, init, body)
+  }
+  const { server, url, calls } = await start({ strict: true }, disabled)
+  try {
+    const response = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "copilot-fusion", messages: [{ role: "user", content: "hi" }],
+    }))
+    assert.equal(response.status, 503)
+    const error = (await response.json()).error
+    assert.equal(error.code, "fusion_unavailable")
+    assert.match(error.message, /Fusion tier 'standard' is disabled/)
+    assert.equal(calls.some((c) => c.url.includes("/chat/completions")), false)
+  } finally {
+    await stop(server)
+  }
+})
+
 test("a bridged streaming response is converted to chat SSE chunks", async () => {
   const chunks = [
     { type: "response.output_text.delta", delta: "hel" },
@@ -379,11 +455,14 @@ test("bridged tool-call deltas always carry an id and a function name", async ()
       .map((line) => JSON.parse(line.slice(5)))
       .filter((chunk) => chunk.choices?.[0]?.delta?.tool_calls)
     assert.ok(chunks.length >= 3)
+    let argumentsText = ""
     for (const chunk of chunks) {
       const call = chunk.choices[0].delta.tool_calls[0]
       assert.equal(call.id, "call-1")
       assert.equal(call.function.name, "get_weather")
+      argumentsText += call.function.arguments
     }
+    assert.equal(argumentsText, '{"city":"Paris"}', "arguments must not be duplicated by the done event")
     assert.match(payload, /\[DONE\]/)
   } finally {
     await stop(server)

@@ -73,8 +73,7 @@ All settings come from the environment.
 
 ```sh
 npm install
-npm test
-npm run typecheck
+npm run check   # typecheck + build + 114 tests
 ```
 
 ## License
