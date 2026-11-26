@@ -1,6 +1,6 @@
 services:
   copilot-fusion-api:
-    image: ghrc.io/forkprince/copilot-fusion-api:latest
+    image: ghcr.io/forkprince/copilot-fusion-api:latest
     container_name: copilot-fusion-api
     restart: unless-stopped
     ports:
