@@ -5,7 +5,7 @@
  */
 import { COPILOT_API_VERSION, parseFusionMeta, type FusionMetaTiers } from "./tiers.js"
 import { wirePath, type Wire } from "./wire.js"
-import type { FetchLike } from "./creds.js"
+import { copilotHeaders, describeError, type FetchLike } from "./http.js"
 
 export interface RouteEntry {
   readonly modelId: string
@@ -111,11 +111,7 @@ export class CopilotClient {
     try {
       response = await this.fetchImpl(url, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          "X-GitHub-Api-Version": COPILOT_API_VERSION,
-        },
+        headers: copilotHeaders(token, COPILOT_API_VERSION),
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(this.timeoutMs),
       })
@@ -136,10 +132,7 @@ export class CopilotClient {
   private async getJson(url: string, token: string): Promise<unknown> {
     try {
       const response = await this.fetchImpl(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "X-GitHub-Api-Version": COPILOT_API_VERSION,
-        },
+        headers: copilotHeaders(token, COPILOT_API_VERSION),
         signal: AbortSignal.timeout(this.timeoutMs),
       })
       if (!response.ok) return undefined
@@ -185,7 +178,7 @@ export class CopilotClient {
   }
 
   /** GET /models (cached an hour, keyed by host). Empty map on failure. */
-  private async getCatalog(baseURL: string, token: string): Promise<Map<string, string[] | null>> {
+  async getModels(baseURL: string, token: string): Promise<Map<string, string[] | null>> {
     if (this.catalogCache && this.now - this.catalogCache.at < ONE_HOUR_MS && this.catalogCache.baseURL === baseURL) {
       return this.catalogCache.value
     }
@@ -210,12 +203,7 @@ export class CopilotClient {
   async supportsWire(baseURL: string, token: string, modelId: string, wire: Wire, endpointsFromAuto: unknown): Promise<boolean | null> {
     const direct = endpointsInclude(endpointsFromAuto, wire)
     if (direct !== null) return direct
-    const catalog = await this.getCatalog(baseURL, token)
+    const catalog = await this.getModels(baseURL, token)
     return endpointsInclude(catalog.get(modelId) ?? null, wire)
   }
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
 }

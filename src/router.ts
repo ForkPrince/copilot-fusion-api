@@ -5,7 +5,8 @@
  */
 import { createHash } from "node:crypto"
 import { LruMap } from "./cache.js"
-import type { FetchLike } from "./creds.js"
+import type { FetchLike } from "./http.js"
+import { wirePath, type Wire } from "./wire.js"
 import { CopilotClient, type RouteRequest, type RouteResult, type RouteEntry } from "./auto.js"
 
 export { type RouteRequest, type RouteResult, type RouteEntry }
@@ -58,6 +59,30 @@ export class FusionRouter {
   /** Access to /meta for setup-time variant gating. */
   getMeta(baseURL: string, token: string) {
     return this.client.getMeta(baseURL, token)
+  }
+
+  /**
+   * Pick a model that serves `wire` for the no-routing fallback path.
+   * Catalog failures leave the configured anchor in place so a network hiccup
+   * never blocks the request.
+   */
+  async resolveAnchor(baseURL: string, token: string, wire: Wire, preferred?: string): Promise<string> {
+    const fallback = preferred ?? (wire === "chat" ? "gpt-5-mini" : "gpt-6-luna")
+    const models = await this.client.getModels(baseURL, token)
+    const serves = (id: string): boolean => {
+      const endpoints = models.get(id)
+      if (!endpoints) return false
+      const path = wirePath(wire)
+      return endpoints.some((endpoint) => endpoint === path || (wire === "messages" && endpoint.endsWith("/messages")))
+    }
+    if (preferred && serves(preferred)) return preferred
+    for (const id of models.keys()) {
+      if (serves(id) && /^gpt-/.test(id)) return id
+    }
+    for (const id of models.keys()) {
+      if (serves(id)) return id
+    }
+    return fallback
   }
 
   private static readonly SEP = "\u0000"

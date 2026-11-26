@@ -1,0 +1,13 @@
+services:
+  copilot-fusion-api:
+    image: ghrc.io/forkprince/copilot-fusion-api:latest
+    container_name: copilot-fusion-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      API_KEY: ${API_KEY:-local-secret}
+    volumes:
+      - ${HOME}/.config/copilot-fusion:/root/.config/copilot-fusion

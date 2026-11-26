@@ -23,7 +23,7 @@
 export type FusionVariant = "standard" | "high" | "max"
 
 export interface FusionTierSpec {
-  /** opencode model variant id (also shown in the TUI variant dialog) */
+  /** Fusion tier name, also exposed as a suffix on public model ids */
   readonly variant: FusionVariant
   /** /auto `tier` value to send */
   readonly wire: string

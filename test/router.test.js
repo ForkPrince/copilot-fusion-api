@@ -61,7 +61,7 @@ test("sticky: one /auto call per conversation; later turns reuse the pinned rout
   assert.equal(body.prompt, BASE_REQ.text)
   assert.equal(body.multi_turn.routing_intent, "anchor")
   assert.equal(calls[0].init.headers.Authorization, "Bearer gho_test")
-  assert.equal(calls[0].init.headers["Copilot-Integration-Id"], undefined)
+  assert.equal(calls[0].init.headers["Copilot-Integration-Id"], "vscode-chat")
 })
 
 test("different variant routes separately", async () => {

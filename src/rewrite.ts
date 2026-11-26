@@ -1,9 +1,8 @@
 /**
  * Rewrite an outgoing inference request after /auto routing.
  *
- * Opencode builds the request from the anchor model (fusion's `modelID` is
- * the anchor's wire id), which means the *unmodified* request is always a
- * valid call to the anchor — our fallback path simply leaves it alone.
+ * A request built for the anchor is always a valid call to the anchor, so the
+ * fallback path simply leaves it alone.
  * When Fusion routes, we swap `model` to the picked id and attach
  * `Copilot-Session-Token` (this is what bills Fusion, with the paid-plan
  * 30% discount through 2026-11-30).

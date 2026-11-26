@@ -1,7 +1,7 @@
 /**
  * Extract the last user prompt (text + whether it carries an image) from a
  * built inference request body — the Responses and Chat Completions shapes
- * that opencode produces. The /auto router needs only this much of the
+ * that OpenAI clients produce. The /auto router needs only this much of the
  * conversation, which is what VS Code sends too.
  */
 

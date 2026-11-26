@@ -1,120 +1,184 @@
 /**
- * Resolve opencode's stored GitHub Copilot credential the same way the
- * built-in Copilot provider does, so this plugin never asks the user for a
- * separate token:
+ * Copilot credential provider.
  *
- *   connection = ctx.integration.connection.active("github-copilot")
- *   credential = ctx.integration.connection.resolve(connection)
- *   // credential: { type: "oauth", refresh === access, metadata: {...} }
- *
- * baseURL resolution mirrors the built-in (`copilotBaseURL`):
- *   metadata.apiEndpoint (e.g. https://api.business.githubcopilot.com)
- *   ?? https://copilot-api.<enterpriseUrl host> (GHES)
- *   ?? https://api.githubcopilot.com
+ * A device login stores a long-lived GitHub OAuth token plus the short-lived
+ * Copilot token it was exchanged for. This provider serves the Copilot token
+ * to the router and re-exchanges it before it expires. The server never asks
+ * the API client for a GitHub credential.
  */
+import { DeviceAuth } from "./device.js"
+import { credsKey } from "./router.js"
+import { authFilePath, clearAuth, readAuth, writeAuth, type StoredAuth } from "./store.js"
 
-const COPILOT_INTEGRATION_ID = "github-copilot" as const
-export const DEFAULT_BASE_URL = "https://api.githubcopilot.com" as const
-
-export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
+export const DEFAULT_BASE_URL = "https://api.githubcopilot.com"
 
 export interface CopilotCredentials {
   readonly token: string
   readonly baseURL: string
+  /** Stable identity of the GitHub credential, used to scope sticky routes. */
+  readonly key: string
 }
 
-const HOSTNAME_RE = /^[a-z0-9.-]+$/i
+export interface CredentialProvider {
+  get(options?: { readonly force?: boolean }): Promise<CopilotCredentials>
+  invalidate(): void
+}
 
-function parseHostname(raw: string): string | undefined {
-  let url: URL
-  try {
-    url = new URL(raw.includes("://") ? raw : `https://${raw}`)
-  } catch {
-    return undefined
+/** Copilot tokens rotate often; the GitHub credential is the stable identity. */
+function credentialKey(githubToken: string, baseURL: string): string {
+  return credsKey(githubToken, baseURL)
+}
+
+export class AuthError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message)
+    this.name = "AuthError"
   }
-  if (url.protocol !== "https:") return undefined
-  if (url.username || url.password) return undefined
-  if (!HOSTNAME_RE.test(url.hostname)) return undefined
-  if (url.port && !/^\d{2,5}$/.test(url.port)) return undefined
-  return url.host
 }
 
-function parseOrigin(raw: string): string | undefined {
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
-    return undefined
+export interface CredentialProviderOptions {
+  readonly authFile?: string
+  readonly deviceAuth: DeviceAuth
+  readonly baseURLOverride?: string
+  readonly skewMs?: number
+  readonly now?: () => number
+  readonly log?: (...args: string[]) => void
+}
+
+export class FileCredentialProvider implements CredentialProvider {
+  private cached?: CopilotCredentials & { readonly expiresAtMs: number }
+  private inflight?: Promise<CopilotCredentials>
+
+  constructor(private readonly options: CredentialProviderOptions) {}
+
+  private get now(): number {
+    return this.options.now?.() ?? Date.now()
   }
-  if (url.protocol !== "https:") return undefined
-  if (url.username || url.password) return undefined
-  if (!HOSTNAME_RE.test(url.hostname)) return undefined
-  if (url.port && !/^\d{2,5}$/.test(url.port)) return undefined
-  // Origin only: drop any path, query, fragment.
-  return `${url.protocol}//${url.host}`
-}
 
-/** Pure: metadata -> baseURL. Exported for tests. */
-export function copilotBaseURLFromMetadata(metadata: unknown): string {
-  if (typeof metadata === "object" && metadata !== null) {
-    const record = metadata as Record<string, unknown>
-    const endpoint = record.apiEndpoint
-    if (typeof endpoint === "string" && endpoint.trim()) {
-      return parseOrigin(endpoint.trim()) ?? DEFAULT_BASE_URL
+  private get skewMs(): number {
+    return this.options.skewMs ?? 5 * 60_000
+  }
+
+  private get path(): string {
+    return this.options.authFile ?? authFilePath()
+  }
+
+  private log(...args: string[]): void {
+    this.options.log?.(...args)
+  }
+
+  invalidate(): void {
+    this.cached = undefined
+  }
+
+  async save(auth: StoredAuth): Promise<void> {
+    await writeAuth(this.path, auth)
+    this.cached = undefined
+  }
+
+  async clear(): Promise<void> {
+    await clearAuth(this.path)
+    this.cached = undefined
+  }
+
+  async status(): Promise<{
+    readonly authFile: string
+    readonly authenticated: boolean
+    readonly githubToken?: string
+    readonly baseURL?: string
+    readonly copilotExpiresAtMs?: number
+    readonly copilotValid: boolean
+  }> {
+    const stored = await readAuth(this.path)
+    if (!stored) return { authFile: this.path, authenticated: false, copilotValid: false }
+    const valid = !!stored.copilotToken
+      && (stored.copilotExpiresAtMs ?? 0) - this.now > this.skewMs
+    return {
+      authFile: this.path,
+      authenticated: true,
+      githubToken: stored.githubToken,
+      baseURL: this.options.baseURLOverride ?? stored.baseURL ?? DEFAULT_BASE_URL,
+      copilotExpiresAtMs: stored.copilotExpiresAtMs,
+      copilotValid: valid,
     }
-    const enterprise = record.enterpriseUrl
-    if (typeof enterprise === "string" && enterprise.trim()) {
-      const host = parseHostname(enterprise.trim())
-      if (!host) return DEFAULT_BASE_URL
-      return parseOrigin(`https://copilot-api.${host}`) ?? DEFAULT_BASE_URL
+  }
+
+  async get(options: { readonly force?: boolean } = {}): Promise<CopilotCredentials> {
+    if (!options.force && this.cached && this.cached.expiresAtMs - this.now > this.skewMs) {
+      const cached = this.cached
+      return { token: cached.token, baseURL: cached.baseURL, key: cached.key }
     }
+    if (this.inflight) return this.inflight
+    const pending = this.resolve(options.force === true).finally(() => {
+      this.inflight = undefined
+    })
+    this.inflight = pending
+    return pending
   }
-  return DEFAULT_BASE_URL
-}
 
-interface CredentialLike {
-  readonly type?: unknown
-  readonly refresh?: unknown
-  readonly access?: unknown
-  readonly metadata?: unknown
-}
+  private async resolve(force: boolean): Promise<CopilotCredentials> {
+    let stored = await readAuth(this.path)
+    if (!stored) {
+      throw new AuthError("not logged in — run `copilot-fusion-api login`", "login_required")
+    }
+    if (!force && stored.copilotToken && (stored.copilotExpiresAtMs ?? 0) - this.now > this.skewMs) {
+      const storedBaseURL = this.options.baseURLOverride ?? stored.baseURL ?? DEFAULT_BASE_URL
+      const credentials = {
+        token: stored.copilotToken,
+        baseURL: storedBaseURL,
+        key: credentialKey(stored.githubToken, storedBaseURL),
+        expiresAtMs: stored.copilotExpiresAtMs!,
+      }
+      this.cached = credentials
+      return { token: credentials.token, baseURL: credentials.baseURL, key: credentials.key }
+    }
 
-/** Pure: credential -> credentials. Exported for tests. */
-export function copilotCredentialsFromCredential(
-  credential: CredentialLike | undefined,
-): CopilotCredentials | undefined {
-  if (!credential || credential.type !== "oauth") return undefined
-  const token = typeof credential.refresh === "string" && credential.refresh
-    ? credential.refresh
-    : typeof credential.access === "string"
-      ? credential.access
-      : undefined
-  if (!token) return undefined
-  return { token, baseURL: copilotBaseURLFromMetadata(credential.metadata) }
-}
+    let exchanged = await this.exchange(stored.githubToken)
+    if (!exchanged && stored.refreshToken) {
+      this.log("copilot token rejected — rotating the GitHub token")
+      const rotated = await this.options.deviceAuth.refreshGitHubToken(stored.refreshToken)
+      if (rotated) {
+        stored = {
+          ...stored,
+          githubToken: rotated.accessToken,
+          refreshToken: rotated.refreshToken ?? stored.refreshToken,
+        }
+        exchanged = await this.exchange(stored.githubToken)
+      }
+    }
+    if (!exchanged) {
+      throw new AuthError("could not refresh the Copilot token — run `copilot-fusion-api login` again", "refresh_failed")
+    }
 
-export interface IntegrationLike<Connection = unknown> {
-  readonly connection: {
-    readonly active: (integrationID: string) => Promise<Connection | undefined>
-    readonly resolve: (connection: Connection) => Promise<CredentialLike | undefined>
+    const baseURL = this.options.baseURLOverride ?? exchanged.baseURL ?? stored.baseURL ?? DEFAULT_BASE_URL
+    const next: StoredAuth = {
+      ...stored,
+      copilotToken: exchanged.token,
+      copilotExpiresAtMs: exchanged.expiresAtMs,
+      baseURL,
+      updatedAt: this.now,
+    }
+    await writeAuth(this.path, next)
+    const credentials = {
+      token: exchanged.token,
+      baseURL,
+      key: credentialKey(stored.githubToken, baseURL),
+      expiresAtMs: exchanged.expiresAtMs,
+    }
+    this.cached = credentials
+    return { token: exchanged.token, baseURL, key: credentials.key }
   }
-}
 
-/**
- * Resolve credentials from an opencode plugin context. Returns undefined
- * when Copilot is not connected (or the stored credential is not an OAuth
- * credential) instead of throwing — the plugin stays inert until the user
- * runs /connect.
- */
-export async function resolveCopilotCredentials<Connection>(
-  integration: IntegrationLike<Connection>,
-): Promise<CopilotCredentials | undefined> {
-  try {
-    const connection = await integration.connection.active(COPILOT_INTEGRATION_ID)
-    if (!connection) return undefined
-    const credential = await integration.connection.resolve(connection)
-    return copilotCredentialsFromCredential(credential as CredentialLike | undefined)
-  } catch {
-    return undefined
+  private async exchange(githubToken: string) {
+    try {
+      return await this.options.deviceAuth.exchangeForCopilotToken(githubToken)
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String((error as { code: unknown }).code) : ""
+      if (code === "http_401" || code === "http_403") return undefined
+      throw new AuthError(error instanceof Error ? error.message : String(error), code || "exchange_failed")
+    }
   }
 }

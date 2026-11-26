@@ -1,6 +1,8 @@
 /**
- * Wire model. The wire decides which request format crosses the wire for a
- * given model; the plugin derives it from the anchor (never from the body).
+ * Wire model: which upstream endpoint a routed request is sent to. The wire
+ * is chosen by the OpenAI-compatible endpoint the client called, not by the
+ * body, so `/v1/chat/completions` always stays chat and `/v1/responses`
+ * always stays responses.
  */
 
 export type Wire = "responses" | "chat" | "messages"
@@ -16,21 +18,20 @@ export function wirePath(wire: Wire): string {
   }
 }
 
+/** Map the server's public path to the upstream wire. */
+export function wireForEndpoint(pathname: string): Wire | undefined {
+  const path = pathname.replace(/\/+$/, "").replace(/^\/v1/, "")
+  if (path === "/chat/completions") return "chat"
+  if (path === "/responses") return "responses"
+  if (path === "/messages") return "messages"
+  return undefined
+}
 
-/**
- * Derive an anchor model's wire from its package / `settings.endpoint`.
- * The gpt >= 5 / mai / grok heuristic matches the built-in Copilot provider.
- */
-export function wireOfAnchor(anchor: { package?: string; settings?: Record<string, unknown>; modelID?: string }): Wire {
-  const pkg = typeof anchor.package === "string" ? anchor.package : ""
-  if (pkg.includes("providers/anthropic") || pkg.includes("@ai-sdk/anthropic")) return "messages"
-  const endpoint = anchor.settings?.endpoint
-  if (endpoint === "responses" || endpoint === "chat" || endpoint === "messages") {
-    return endpoint as Wire
-  }
-  const id = typeof anchor.modelID === "string" ? anchor.modelID : ""
-  if (/^(mai-|grok-)/.test(id)) return "responses"
-  const gpt = /^gpt-(\d+)/.exec(id)
-  if (gpt && Number(gpt[1]) >= 5 && !id.startsWith("gpt-5-mini")) return "responses"
+/** Best-effort wire guess for a model id (used for fallback anchor picks). */
+export function wireOfModelId(modelId: string): Wire {
+  if (/^(claude-|anthropic)/.test(modelId)) return "messages"
+  if (/^(mai-|grok-)/.test(modelId)) return "responses"
+  const gpt = /^gpt-(\d+)/.exec(modelId)
+  if (gpt && Number(gpt[1]) >= 5 && !modelId.startsWith("gpt-5-mini")) return "responses"
   return "chat"
 }
