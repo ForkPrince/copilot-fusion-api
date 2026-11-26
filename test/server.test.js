@@ -343,6 +343,53 @@ test("a bridged streaming response is converted to chat SSE chunks", async () =>
   }
 })
 
+test("bridged tool-call deltas always carry an id and a function name", async () => {
+  const events = [
+    { type: "response.output_item.added", item: { type: "function_call", id: "fc-1", call_id: "call-1", name: "get_weather", arguments: "" } },
+    { type: "response.function_call_arguments.delta", item_id: "fc-1", call_id: "call-1", delta: '{"city":' },
+    { type: "response.function_call_arguments.delta", item_id: "fc-1", call_id: "call-1", delta: '"Paris"}' },
+    { type: "response.function_call_arguments.done", item_id: "fc-1", call_id: "call-1", arguments: '{"city":"Paris"}' },
+    { type: "response.completed" },
+  ]
+  const streaming = (url, init, body) => {
+    if (url.includes("/auto")) {
+      return json({ session_token: "session-tok-1", expires_at: FUTURE, selected_model: {
+        id: "gpt-6-luna", supported_endpoints: ["/responses"], capabilities: { input: ["text"] },
+      } })
+    }
+    if (url.endsWith("/responses")) {
+      const encoder = new TextEncoder()
+      return new Response(new ReadableStream({
+        start(controller) {
+          for (const event of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+          controller.close()
+        },
+      }), { headers: { "content-type": "text/event-stream" } })
+    }
+    return defaultHandler(url, init, body)
+  }
+  const { server, url } = await start({}, streaming)
+  try {
+    const response = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "copilot-fusion", messages: [{ role: "user", content: "weather" }], stream: true,
+    }))
+    assert.equal(response.status, 200)
+    const payload = await response.text()
+    const chunks = payload.split("\n").filter((line) => line.startsWith("data: {"))
+      .map((line) => JSON.parse(line.slice(5)))
+      .filter((chunk) => chunk.choices?.[0]?.delta?.tool_calls)
+    assert.ok(chunks.length >= 3)
+    for (const chunk of chunks) {
+      const call = chunk.choices[0].delta.tool_calls[0]
+      assert.equal(call.id, "call-1")
+      assert.equal(call.function.name, "get_weather")
+    }
+    assert.match(payload, /\[DONE\]/)
+  } finally {
+    await stop(server)
+  }
+})
+
 test("routing failure falls back to a catalog model without a session token", async () => {
   const failing = (url, init, body) => url.includes("/auto")
     ? new Response("nope", { status: 503 })

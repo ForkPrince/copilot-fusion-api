@@ -143,14 +143,52 @@ function sse(event: unknown): string {
   return `data: ${JSON.stringify(event)}\n\n`
 }
 
+interface PendingCall {
+  readonly index: number
+  id: string
+  name: string
+}
+
 /** Stateful SSE translator: Responses events in, Chat Completions chunks out. */
 export class ResponsesToChatStream {
   private buffer = ""
   private readonly created = Math.floor(Date.now() / 1000)
-  private callIndex = new Map<string, number>()
+  private readonly calls = new Map<string, PendingCall>()
   private nextCallIndex = 0
 
   constructor(private readonly options: ChatChunkOptions) {}
+
+  /** Chat tool-call deltas need both `id` and `function.name` on every chunk. */
+  private ensureCall(itemId: unknown, callId: unknown, name: unknown): PendingCall {
+    const key = text(itemId) || text(callId) || `call-${this.nextCallIndex}`
+    let call = this.calls.get(key)
+    if (!call) {
+      call = {
+        index: this.nextCallIndex++,
+        id: text(callId) || text(itemId) || key,
+        name: text(name) || "function",
+      }
+      this.calls.set(key, call)
+    }
+    if (text(name)) call.name = text(name)
+    if (text(callId)) {
+      call.id = text(callId)
+      this.calls.set(text(callId), call)
+    }
+    if (text(itemId)) this.calls.set(text(itemId), call)
+    return call
+  }
+
+  private toolCallChunk(call: PendingCall, args: string): string {
+    return this.chunk({
+      tool_calls: [{
+        index: call.index,
+        id: call.id,
+        type: "function",
+        function: { name: call.name, arguments: args },
+      }],
+    })
+  }
 
   private chunk(delta: Record<string, unknown>, finishReason: string | null = null): string {
     return sse({
@@ -199,22 +237,22 @@ export class ResponsesToChatStream {
     switch (type) {
       case "response.output_text.delta":
         return this.chunk({ content: text(event.delta) })
-      case "response.function_call_arguments.delta": {
-        const key = text(event.item_id) || text(event.call_id) || "call"
-        let index = this.callIndex.get(key)
-        if (index === undefined) {
-          index = this.nextCallIndex++
-          this.callIndex.set(key, index)
-        }
-        return this.chunk({
-          tool_calls: [{
-            index,
-            id: text(event.call_id) || key,
-            type: "function",
-            function: { arguments: text(event.delta) },
-          }],
-        })
+      case "response.output_item.added": {
+        const item = isRecord(event.item) ? event.item : undefined
+        if (!item || item.type !== "function_call") return ""
+        const call = this.ensureCall(item.id, item.call_id, item.name)
+        return this.toolCallChunk(call, "")
       }
+      case "response.function_call_arguments.delta":
+        return this.toolCallChunk(
+          this.ensureCall(event.item_id, event.call_id, event.name),
+          text(event.delta),
+        )
+      case "response.function_call_arguments.done":
+        return this.toolCallChunk(
+          this.ensureCall(event.item_id, event.call_id, event.name),
+          text(event.arguments),
+        )
       case "response.completed":
       case "response.failed":
         return this.chunk({}, "stop") + "data: [DONE]\n\n"
