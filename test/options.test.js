@@ -37,12 +37,12 @@ test("out-of-range values fall back", () => {
 
 test("routing options can come from the environment", () => {
   const parsed = parseFusionOptions(undefined, {
-    FUSION_ROUTE: "prompt",
-    FUSION_STRICT: "0",
-    FUSION_STRIP_TEMPERATURE: "0",
-    FUSION_TIMEOUT_MS: "9000",
-    FUSION_SKEW_MS: "60000",
-    FUSION_DEBUG: "1",
+    ROUTE: "prompt",
+    STRICT: "0",
+    STRIP_TEMPERATURE: "0",
+    TIMEOUT_MS: "9000",
+    SKEW_MS: "60000",
+    DEBUG: "1",
     COPILOT_ANCHOR_MODEL: "gpt-6-terra",
   })
   assert.equal(parsed.route, "prompt")
@@ -67,7 +67,7 @@ test("configFromEnv has safe localhost defaults and honours overrides", () => {
     API_KEY: "secret",
     COPILOT_BASE_URL: "https://copilot-api.ghe.example.com",
     GITHUB_CLIENT_ID: "custom",
-    COPILOT_FUSION_AUTH_FILE: "/tmp/auth.json",
+    COPILOT_AUTH_FILE: "/tmp/auth.json",
   })
   assert.equal(configured.host, "0.0.0.0")
   assert.equal(configured.port, 3000)

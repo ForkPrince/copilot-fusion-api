@@ -188,7 +188,7 @@ export function createServer(options: ServerOptions): Server {
           res,
           503,
           `Copilot could not route this request: ${routeFailure ?? "no routable prompt in the request"}. ` +
-            `Set FUSION_STRICT=0 to allow a plain-model fallback.`,
+            `Set STRICT=0 to allow a plain-model fallback.`,
           "fusion_unavailable",
         )
         return

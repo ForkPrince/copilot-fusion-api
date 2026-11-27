@@ -50,7 +50,7 @@ function provider(path, deviceImpl, overrides = {}) {
 test("auth file path honours explicit file and config dir overrides", () => {
   assert.equal(authFilePath({ authFile: "/tmp/x.json", configDir: "/tmp/other" }), "/tmp/x.json")
   assert.equal(authFilePath({ configDir: "/tmp/other" }), "/tmp/other/auth.json")
-  assert.equal(authFilePath({ env: { COPILOT_FUSION_AUTH_FILE: "/tmp/y.json" } }), "/tmp/y.json")
+  assert.equal(authFilePath({ env: { COPILOT_AUTH_FILE: "/tmp/y.json" } }), "/tmp/y.json")
 })
 
 test("malformed or partial auth files are treated as absent", async () => {

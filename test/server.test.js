@@ -522,7 +522,7 @@ test("strict mode refuses a plain-model fallback and reports why routing failed"
     const error = (await response.json()).error
     assert.equal(error.code, "fusion_unavailable")
     assert.match(error.message, /route unavailable \(HTTP 503\)/)
-    assert.match(error.message, /FUSION_STRICT=0/)
+    assert.match(error.message, /STRICT=0/)
     assert.equal(calls.some((c) => c.url.includes("/chat/completions")), false)
   } finally {
     await stop(server)

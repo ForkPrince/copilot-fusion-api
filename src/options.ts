@@ -93,15 +93,15 @@ export function parseFusionOptions(raw: unknown, env: NodeJS.ProcessEnv = proces
       ? Math.floor(value)
       : fallback
   }
-  const rawRoute = pickString("route") ?? stringValue(env, ["FUSION_ROUTE"])
+  const rawRoute = pickString("route") ?? stringValue(env, ["ROUTE"])
   return {
     anchorModel: pickString("anchorModel") ?? stringValue(env, ["COPILOT_ANCHOR_MODEL"]),
     route: rawRoute === "prompt" ? "prompt" : "conversation",
-    strict: pickBoolean("strict", boolValue(env, ["FUSION_STRICT"], DEFAULTS.strict)),
-    stripTemperature: pickBoolean("stripTemperature", boolValue(env, ["FUSION_STRIP_TEMPERATURE"], DEFAULTS.stripTemperature)),
-    timeoutMs: pickNumber("timeoutMs", intValue(env, ["FUSION_TIMEOUT_MS"], DEFAULTS.timeoutMs, 500, 60_000), 500, 60_000),
-    skewMs: pickNumber("skewMs", intValue(env, ["FUSION_SKEW_MS"], DEFAULTS.skewMs, 0, 24 * 60 * 60_000), 0, 24 * 60 * 60_000),
-    debug: pickBoolean("debug", DEFAULTS.debug) || boolValue(env, ["FUSION_DEBUG"], false),
+    strict: pickBoolean("strict", boolValue(env, ["STRICT"], DEFAULTS.strict)),
+    stripTemperature: pickBoolean("stripTemperature", boolValue(env, ["STRIP_TEMPERATURE"], DEFAULTS.stripTemperature)),
+    timeoutMs: pickNumber("timeoutMs", intValue(env, ["TIMEOUT_MS"], DEFAULTS.timeoutMs, 500, 60_000), 500, 60_000),
+    skewMs: pickNumber("skewMs", intValue(env, ["SKEW_MS"], DEFAULTS.skewMs, 0, 24 * 60 * 60_000), 0, 24 * 60 * 60_000),
+    debug: pickBoolean("debug", DEFAULTS.debug) || boolValue(env, ["DEBUG"], false),
   }
 }
 
@@ -122,7 +122,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServerConfi
       "https://api.github.com/copilot_internal/v2/token",
     )!,
     copilotBaseURL: stringValue(env, ["COPILOT_BASE_URL"]),
-    configDir: stringValue(env, ["COPILOT_FUSION_CONFIG_DIR"]),
-    authFile: stringValue(env, ["COPILOT_FUSION_AUTH_FILE"]),
+    configDir: stringValue(env, ["COPILOT_CONFIG_DIR"]),
+    authFile: stringValue(env, ["COPILOT_AUTH_FILE"]),
   }
 }

@@ -92,9 +92,9 @@ All settings come from the environment.
 | --- | --- | --- |
 | `HOST`, `PORT` | `127.0.0.1`, `8080` | Bind address |
 | `API_KEY` | unset | Require clients to send a bearer token |
-| `FUSION_STRICT` | `1` | Fail instead of falling back when routing fails |
-| `FUSION_ROUTE` | `conversation` | Keep one model per session, or pick per prompt with `prompt` |
-| `FUSION_DEBUG` | unset | Set to `1` to log routing details |
+| `STRICT` | `1` | Fail instead of falling back when routing fails |
+| `ROUTE` | `conversation` | Keep one model per session, or pick per prompt with `prompt` |
+| `DEBUG` | unset | Set to `1` to log routing details |
 
 ## Development
 

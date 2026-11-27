@@ -23,8 +23,8 @@ export function authFilePath(options: StoreOptions = {}): string {
   if (options.authFile) return options.authFile
   if (options.configDir) return join(options.configDir, "auth.json")
   const env = options.env ?? process.env
-  if (env.COPILOT_FUSION_AUTH_FILE) return env.COPILOT_FUSION_AUTH_FILE
-  if (env.COPILOT_FUSION_CONFIG_DIR) return join(env.COPILOT_FUSION_CONFIG_DIR, "auth.json")
+  if (env.COPILOT_AUTH_FILE) return env.COPILOT_AUTH_FILE
+  if (env.COPILOT_CONFIG_DIR) return join(env.COPILOT_CONFIG_DIR, "auth.json")
   const base = process.platform === "win32" && env.APPDATA
     ? env.APPDATA
     : join(homedir(), ".config")
