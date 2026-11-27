@@ -2,9 +2,12 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   resolveWireTier,
+  resolveTierSpec,
   parseFusionMeta,
   normalizeVariant,
+  tierSpecFor,
   FUSION_TIERS,
+  AUTO_TIERS,
 } from "../dist/tiers.js"
 
 test("normalizeVariant is strict", () => {
@@ -47,6 +50,22 @@ test("max never falls back — disabled means unavailable", () => {
 test("tiers absent from meta still route (server is the judge)", () => {
   assert.equal(resolveWireTier("max", { balance: true })?.wire, "hydrafusion-max")
   assert.equal(resolveWireTier("high", {})?.wire, "hydrafusion")
+})
+
+test("Auto tiers expose the four classic routing profiles", () => {
+  assert.deepEqual(AUTO_TIERS.map((t) => t.wire), ["efficiency", "balance", "intelligence", "fast"])
+  assert.equal(tierSpecFor("auto", "balance")?.label, "Auto Balance")
+  assert.equal(tierSpecFor("fusion", "standard")?.label, "Fusion Standard")
+  assert.equal(tierSpecFor("auto", "standard"), undefined)
+})
+
+test("Auto tiers respect /meta enabled flags", () => {
+  const auto = tierSpecFor("auto", "efficiency")
+  assert.deepEqual(resolveTierSpec(auto, undefined), { wire: "efficiency", degraded: false })
+  assert.deepEqual(resolveTierSpec(auto, { efficiency: true }), { wire: "efficiency", degraded: false })
+  assert.equal(resolveTierSpec(auto, { efficiency: false }), null)
+  assert.equal(resolveTierSpec(tierSpecFor("auto", "fast"), { fast: false }), null)
+  assert.equal(resolveTierSpec(tierSpecFor("auto", "fast"), {})?.wire, "fast")
 })
 
 test("parseFusionMeta reads enabled flags and fusion presence", () => {

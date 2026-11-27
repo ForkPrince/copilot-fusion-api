@@ -1,5 +1,5 @@
 /**
- * Fusion tier vocabulary.
+ * Tier vocabulary for Copilot Fusion and Auto routing.
  *
  * Copilot Fusion is presented to users as three effort levels — Standard,
  * High, Max — but on the wire they are carried by the virtual `auto` model
@@ -21,24 +21,48 @@
  */
 
 export type FusionVariant = "standard" | "high" | "max"
+export type AutoVariant = "efficiency" | "balance" | "intelligence" | "fast"
+export type RouteFamily = "fusion" | "auto"
 
-export interface FusionTierSpec {
-  /** Fusion tier name, also exposed as a suffix on public model ids */
-  readonly variant: FusionVariant
+/** Common shape for both Fusion effort levels and classic Auto routing profiles. */
+export interface TierSpec {
+  readonly family: RouteFamily
+  readonly variant: string
   /** /auto `tier` value to send */
   readonly wire: string
-  /** used when `wire` is not enabled on the account (High only) */
+  /** used when `wire` is not enabled on the account (Fusion High only) */
   readonly fallbackWire?: string
-  /** value for the variant's `reasoningEffort` setting */
-  readonly effort: "low" | "high" | "xhigh"
+  readonly effort?: string
   readonly label: string
 }
 
+export interface FusionTierSpec extends TierSpec {
+  readonly family: "fusion"
+  readonly variant: FusionVariant
+  readonly effort: "low" | "high" | "xhigh"
+}
+
 export const FUSION_TIERS: ReadonlyArray<FusionTierSpec> = [
-  { variant: "standard", wire: "balance", effort: "low", label: "Fusion Standard" },
-  { variant: "high", wire: "hydrafusion", fallbackWire: "intelligence", effort: "high", label: "Fusion High" },
-  { variant: "max", wire: "hydrafusion-max", effort: "xhigh", label: "Fusion Max" },
+  { family: "fusion", variant: "standard", wire: "balance", effort: "low", label: "Fusion Standard" },
+  { family: "fusion", variant: "high", wire: "hydrafusion", fallbackWire: "intelligence", effort: "high", label: "Fusion High" },
+  { family: "fusion", variant: "max", wire: "hydrafusion-max", effort: "xhigh", label: "Fusion Max" },
 ]
+
+/**
+ * Classic Auto routing profiles. These are the values the first-party CLI
+ * exposes in its model picker; `fast` is an integrator latency preset.
+ */
+export const AUTO_TIERS: ReadonlyArray<TierSpec> = [
+  { family: "auto", variant: "efficiency", wire: "efficiency", effort: "low", label: "Auto Efficiency" },
+  { family: "auto", variant: "balance", wire: "balance", effort: "medium", label: "Auto Balance" },
+  { family: "auto", variant: "intelligence", wire: "intelligence", effort: "high", label: "Auto Intelligence" },
+  { family: "auto", variant: "fast", wire: "fast", label: "Auto Fast" },
+]
+
+export function tierSpecFor(family: RouteFamily, variant: string): TierSpec | undefined {
+  const list = family === "fusion" ? FUSION_TIERS : AUTO_TIERS
+  return list.find((tier) => tier.variant === variant)
+}
 
 export function isFusionVariant(value: unknown): value is FusionVariant {
   return value === "standard" || value === "high" || value === "max"
@@ -69,17 +93,21 @@ export interface ResolvedTier {
  * Returns null only when /meta is reachable AND the tier is known to be
  * disabled with no usable fallback.
  */
-export function resolveWireTier(variant: FusionVariant, byId: TierAvailability["byId"]): ResolvedTier | null {
-  const spec = FUSION_TIERS.find((t) => t.variant === variant)!
+export function resolveTierSpec(spec: TierSpec, byId: TierAvailability["byId"]): ResolvedTier | null {
   if (!byId) return { wire: spec.wire, degraded: false }
   const enabled = (id: string): boolean | undefined => byId[id]
   if (enabled(spec.wire)) return { wire: spec.wire, degraded: false }
-  if (variant === "high" && spec.fallbackWire && enabled(spec.fallbackWire) === true) {
+  if (spec.fallbackWire && enabled(spec.fallbackWire) === true) {
     return { wire: spec.fallbackWire, degraded: true }
   }
   if (enabled(spec.wire) === false) return null
   // Not listed by /meta at all — let the server decide.
   return { wire: spec.wire, degraded: false }
+}
+
+export function resolveWireTier(variant: FusionVariant, byId: TierAvailability["byId"]): ResolvedTier | null {
+  const spec = FUSION_TIERS.find((t) => t.variant === variant)!
+  return resolveTierSpec(spec, byId)
 }
 
 export interface FusionMetaTiers {

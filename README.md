@@ -1,10 +1,10 @@
 <div align="center">
 
-# copilot-fusion-api
+# copilot-api
 
 [![ci](https://github.com/IcyHot09/opencode-copilot-fusion/actions/workflows/ci.yml/badge.svg)](https://github.com/IcyHot09/opencode-copilot-fusion/actions/workflows/ci.yml)
 
-Use GitHub Copilot Fusion from any OpenAI client. The server picks a model per prompt and bills the request through your Copilot account.
+Use GitHub Copilot Fusion and Auto from any OpenAI client. The server picks a model for each prompt and bills it to your Copilot account.
 
 </div>
 
@@ -16,24 +16,28 @@ Use GitHub Copilot Fusion from any OpenAI client. The server picks a model per p
 Node 22 or newer and a GitHub account with an active Copilot seat.
 
 ```sh
-npm install -g copilot-fusion-api
+npm install -g copilot-api
 ```
 
 ## Sign in
 
 ```sh
-copilot-fusion-api login
+copilot-api login
 ```
 
-Open the URL it prints and enter the code. The CLI saves a credential locally and refreshes it automatically. Use `copilot-fusion-api status` to check the login and `copilot-fusion-api logout` to remove it.
+Open the URL it prints and enter the code. The CLI saves a credential locally and refreshes it as needed. Use `copilot-api status` to check the login and `copilot-api logout` to remove it.
 
 ## Run
 
 ```sh
-copilot-fusion-api serve
+copilot-api serve
 ```
 
-It listens on `127.0.0.1:8080` and serves `/v1/chat/completions` and `/v1/responses`, both with streaming. Fusion may pick a model that only serves `/responses`; the server translates the wire in both directions, so chat clients keep working. Point an OpenAI client at it:
+The server listens on `127.0.0.1:8080` and exposes `/v1/chat/completions` and `/v1/responses`, both with streaming. It also serves `/v1/models` and `/health`.
+
+Copilot may pick a model that only supports `/responses`, so the server translates between the two wire formats and chat clients keep working.
+
+Point an OpenAI client at it:
 
 ```js
 import OpenAI from "openai"
@@ -46,9 +50,15 @@ const reply = await client.chat.completions.create({
 console.log(reply.choices[0].message.content)
 ```
 
-Send `X-Session-ID` on each request to keep the same model across turns.
+Send `X-Session-ID` on each request to keep the same model across a conversation.
 
 ## Models
+
+Two routing families are available. Both send the request to Copilot's `/auto` endpoint, which chooses a model based on the prompt and the selected tier.
+
+### Fusion
+
+Fusion has three effort levels.
 
 | Model | Tier |
 | --- | --- |
@@ -56,7 +66,23 @@ Send `X-Session-ID` on each request to keep the same model across turns.
 | `copilot-fusion-high` | High |
 | `copilot-fusion-max` | Max |
 
-High and Max need Pro+, Max, Business or Enterprise. On the generic `copilot-fusion` model, reasoning effort picks the tier: `low` is Standard, `medium` and `high` are High, `xhigh` is Max.
+High and Max need Pro+, Max, Business or Enterprise. With the generic `copilot-fusion` name, reasoning effort picks the tier: `low` maps to Standard, `medium` and `high` to High, and `xhigh` to Max.
+
+### Auto
+
+Auto has four routing profiles, including a Fast preset for lower latency.
+
+| Model | Profile |
+| --- | --- |
+| `auto`, `copilot-auto` | Balance (default) |
+| `copilot-auto-efficiency` | Efficiency |
+| `copilot-auto-balance` | Balance |
+| `copilot-auto-intelligence` | Intelligence |
+| `copilot-auto-fast` | Fast |
+
+With the generic `auto` name, reasoning effort picks the profile: `low` maps to Efficiency, `medium` to Balance, and `high` and `xhigh` to Intelligence.
+
+A tier or profile in the model name always wins over reasoning effort. Both families use the same `X-Session-ID` stickiness.
 
 ## Configuration
 
@@ -67,14 +93,17 @@ All settings come from the environment.
 | `HOST`, `PORT` | `127.0.0.1`, `8080` | Bind address |
 | `API_KEY` | unset | Require clients to send a bearer token |
 | `FUSION_STRICT` | `1` | Fail instead of falling back when routing fails |
-| `FUSION_DEBUG` | unset | `1` logs routing details |
+| `FUSION_ROUTE` | `conversation` | Keep one model per session, or pick per prompt with `prompt` |
+| `FUSION_DEBUG` | unset | Set to `1` to log routing details |
 
 ## Development
 
 ```sh
 npm install
-npm run check   # typecheck + build + 114 tests
+npm run check
 ```
+
+It runs the typecheck, build and tests.
 
 ## License
 

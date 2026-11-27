@@ -103,13 +103,13 @@ test("health and model catalog work without Copilot auth", async () => {
   try {
     const health = await fetch(`${url}/health`)
     assert.equal(health.status, 200)
-    assert.deepEqual(await health.json(), { status: "ok", service: "copilot-fusion" })
+    assert.deepEqual(await health.json(), { status: "ok", service: "copilot-api" })
 
     const models = await fetch(`${url}/v1/models`)
     assert.equal(models.status, 200)
     const list = await models.json()
     assert.equal(list.object, "list")
-    assert.equal(list.data.length, 4)
+    assert.equal(list.data.length, 9)
     assert.equal(calls.length, 0)
   } finally {
     await stop(server)
@@ -156,6 +156,27 @@ test("chat completions route through /auto and rewrite the upstream request", as
     assert.equal(inference.init.headers.authorization, "Bearer copilot_tok")
     assert.equal(inference.init.headers["copilot-integration-id"], "vscode-chat")
     assert.equal(inference.init.headers["x-github-api-version"], "2026-09-21")
+  } finally {
+    await stop(server)
+  }
+})
+
+test("classic Auto models route through Auto tiers", async () => {
+  const { server, url, calls } = await start()
+  try {
+    const first = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "auto", reasoning_effort: "low", messages: [{ role: "user", content: "hi" }],
+    }))
+    assert.equal(first.status, 200)
+    const autoCalls = calls.filter((c) => c.url.includes("/auto"))
+    assert.equal(autoCalls[0].body.tier, "efficiency")
+
+    const second = await fetch(`${url}/v1/chat/completions`, chatRequest({
+      model: "copilot-auto-intelligence", reasoning_effort: "low", messages: [{ role: "user", content: "hi" }],
+    }))
+    assert.equal(second.status, 200)
+    const after = calls.filter((c) => c.url.includes("/auto"))
+    assert.equal(after[1].body.tier, "intelligence")
   } finally {
     await stop(server)
   }
@@ -374,7 +395,7 @@ test("strict mode reports a disabled tier explicitly", async () => {
     assert.equal(response.status, 503)
     const error = (await response.json()).error
     assert.equal(error.code, "fusion_unavailable")
-    assert.match(error.message, /Fusion tier 'standard' is disabled/)
+    assert.match(error.message, /Fusion Standard is disabled/)
     assert.equal(calls.some((c) => c.url.includes("/chat/completions")), false)
   } finally {
     await stop(server)

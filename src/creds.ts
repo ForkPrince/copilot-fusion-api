@@ -122,7 +122,7 @@ export class FileCredentialProvider implements CredentialProvider {
   private async resolve(force: boolean): Promise<CopilotCredentials> {
     let stored = await readAuth(this.path)
     if (!stored) {
-      throw new AuthError("not logged in — run `copilot-fusion-api login`", "login_required")
+      throw new AuthError("not logged in — run `copilot-api login`", "login_required")
     }
     if (!force && stored.copilotToken && (stored.copilotExpiresAtMs ?? 0) - this.now > this.skewMs) {
       const storedBaseURL = this.options.baseURLOverride ?? stored.baseURL ?? DEFAULT_BASE_URL
@@ -150,7 +150,7 @@ export class FileCredentialProvider implements CredentialProvider {
       }
     }
     if (!exchanged) {
-      throw new AuthError("could not refresh the Copilot token — run `copilot-fusion-api login` again", "refresh_failed")
+      throw new AuthError("could not refresh the Copilot token — run `copilot-api login` again", "refresh_failed")
     }
 
     const baseURL = this.options.baseURLOverride ?? exchanged.baseURL ?? stored.baseURL ?? DEFAULT_BASE_URL

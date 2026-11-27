@@ -1,5 +1,5 @@
 /**
- * Sticky Fusion router. Holds the per-session model decision and the turn
+ * Sticky router for Copilot model picks. Holds the per-session decision and the turn
  * bookkeeping (`turns_since_anchor`). All network access lives in
  * CopilotClient; this class owns caching and policy only.
  */
@@ -148,7 +148,7 @@ export class FusionRouter {
         cached.turns += 1
         return { ok: true, entry: cached }
       }
-      this.log(`fusion: re-routing ${key} - image prompt vs pinned model without vision support`)
+      this.log(`route: re-routing ${key} - image prompt vs pinned model without vision support`)
       this.cache.delete(key)
       // Fresh pick required; do not reuse the stale entry.
       const result = await this.routeFresh(request, undefined)
@@ -172,13 +172,13 @@ export class FusionRouter {
 
     const auto = result.auto
     if (image && auto.vision === false) {
-      this.log(`fusion: picked ${auto.modelId} but prompt carries an image; falling back to anchor`)
-      return { ok: false, reason: `fusion picked ${auto.modelId} without vision support`, code: "no_vision" }
+      this.log(`route: picked ${auto.modelId} but prompt carries an image; falling back to anchor`)
+      return { ok: false, reason: `route picked ${auto.modelId} without vision support`, code: "no_vision" }
     }
 
     if (this.options.log) {
       this.log(
-        `fusion /auto picked ${auto.modelId}${auto.hydraScores ? `; hydra_scores=${JSON.stringify(auto.hydraScores)}` : ""}${auto.discountedCosts ? `; discounted_costs=${JSON.stringify(auto.discountedCosts)}` : ""}`,
+        `route /auto picked ${auto.modelId}${auto.hydraScores ? `; hydra_scores=${JSON.stringify(auto.hydraScores)}` : ""}${auto.discountedCosts ? `; discounted_costs=${JSON.stringify(auto.discountedCosts)}` : ""}`,
       )
     }
 
@@ -202,10 +202,10 @@ export class FusionRouter {
     code: string | undefined,
   ): RouteResult {
     if (cached && FusionRouter.isFresh(cached, this.now, this.skewMs)) {
-      this.log(`fusion: /auto unavailable (${reason}); reusing previous route to ${cached.modelId}`)
+      this.log(`route: /auto unavailable (${reason}); reusing previous route to ${cached.modelId}`)
       return { ok: true, entry: cached }
     }
-    this.log(`fusion: route unavailable (${reason})`)
+    this.log(`route: route unavailable (${reason})`)
     return code ? { ok: false, reason, code } : { ok: false, reason }
   }
 }

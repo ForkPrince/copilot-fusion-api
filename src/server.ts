@@ -1,5 +1,5 @@
 /**
- * Standalone OpenAI-compatible HTTP API backed by Copilot Fusion routing.
+ * Standalone OpenAI-compatible HTTP API backed by Copilot Fusion and Auto routing.
  *
  * Public endpoints:
  *   GET  /health
@@ -18,15 +18,15 @@ import type { CopilotCredentials, CredentialProvider } from "./creds.js"
 import { copilotHeaders, describeError, type FetchLike } from "./http.js"
 import { chatToResponses, responsesToChat, ResponsesToChatStream } from "./bridge.js"
 import { extractPromptFromBody } from "./prompt.js"
-import { COPILOT_API_VERSION, resolveWireTier } from "./tiers.js"
+import { COPILOT_API_VERSION, resolveTierSpec } from "./tiers.js"
 import { wireForEndpoint, wireForRoutedModel, wirePath, type Wire } from "./wire.js"
 import {
   effortFromBody,
   isKnownModel,
   listOpenAIModels,
   MODEL_IDS,
+  routeSpecFromRequest,
   sessionIdFrom,
-  tierFromRequest,
 } from "./models.js"
 import type { FusionOptions } from "./options.js"
 
@@ -125,9 +125,9 @@ export function createServer(options: ServerOptions): Server {
       )
       return
     }
-    const variant = tierFromRequest(body.model, effortFromBody(body))
-    if (!variant) {
-      sendError(res, 400, "could not resolve a Fusion tier for this model", "invalid_model")
+    const spec = routeSpecFromRequest(body.model, effortFromBody(body))
+    if (!spec) {
+      sendError(res, 400, "could not resolve a routing tier for this model", "invalid_model")
       return
     }
 
@@ -141,10 +141,10 @@ export function createServer(options: ServerOptions): Server {
 
     const sessionID = sessionIdFrom(req.headers, body)
     const meta = await router.getMeta(credentials.baseURL, credentials.token).catch(() => undefined)
-    const resolved = resolveWireTier(variant, meta?.byId)
+    const resolved = resolveTierSpec(spec, meta?.byId)
     let routeFailure: string | undefined
     if (!resolved) {
-      routeFailure = `Fusion tier '${variant}' is disabled for this account`
+      routeFailure = `${spec.label} is disabled for this account`
       warn(routeFailure)
     }
 
@@ -159,7 +159,7 @@ export function createServer(options: ServerOptions): Server {
         token: credentials.token,
         credsKey: credentials.key,
         sessionID,
-        variant,
+        variant: spec.variant,
         wire,
         tier: resolved.wire,
         text: prompt.text,
@@ -172,13 +172,13 @@ export function createServer(options: ServerOptions): Server {
         routed = true
         upstreamWire = wireForRoutedModel(result.entry.endpoints, modelId, wire)
         log(
-          `fusion: ${variant} -> ${modelId}${resolved.degraded ? " (degraded tier)" : ""}` +
+          `${spec.family}: ${spec.variant} -> ${modelId}${resolved.degraded ? " (degraded tier)" : ""}` +
             (upstreamWire === wire ? "" : ` (bridging ${wire} -> ${upstreamWire})`),
         )
       } else {
         if (result.code === "http_401" || result.code === "http_403") options.creds.invalidate()
         routeFailure = `route unavailable (${result.reason})`
-        warn(`fusion ${routeFailure}`)
+        warn(`route ${routeFailure}`)
       }
     }
 
@@ -187,7 +187,7 @@ export function createServer(options: ServerOptions): Server {
         sendError(
           res,
           503,
-          `Fusion could not route this request: ${routeFailure ?? "no routable prompt in the request"}. ` +
+          `Copilot could not route this request: ${routeFailure ?? "no routable prompt in the request"}. ` +
             `Set FUSION_STRICT=0 to allow a plain-model fallback.`,
           "fusion_unavailable",
         )
@@ -316,7 +316,7 @@ export function createServer(options: ServerOptions): Server {
       try {
         const url = new URL(req.url ?? "/", "http://localhost")
         if (url.pathname === "/health" || url.pathname === "/") {
-          sendJson(res, 200, { status: "ok", service: "copilot-fusion" })
+          sendJson(res, 200, { status: "ok", service: "copilot-api" })
           return
         }
         if (!authorized(req.headers, options.apiKey)) {

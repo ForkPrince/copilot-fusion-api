@@ -1,8 +1,8 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { effortFromBody, isKnownModel, listOpenAIModels, sessionIdFrom, tierFromRequest } from "../dist/models.js"
+import { effortFromBody, isKnownModel, listOpenAIModels, routeSpecFromRequest, sessionIdFrom, tierFromRequest } from "../dist/models.js"
 
-test("/v1/models lists only the Fusion models", () => {
+test("/v1/models lists Fusion and classic Auto models", () => {
   const list = listOpenAIModels()
   assert.equal(list.object, "list")
   assert.deepEqual(list.data.map((m) => m.id), [
@@ -10,6 +10,11 @@ test("/v1/models lists only the Fusion models", () => {
     "copilot-fusion-standard",
     "copilot-fusion-high",
     "copilot-fusion-max",
+    "copilot-auto",
+    "copilot-auto-efficiency",
+    "copilot-auto-balance",
+    "copilot-auto-intelligence",
+    "copilot-auto-fast",
   ])
   assert.equal(list.data[0].object, "model")
   assert.equal(list.data[0].owned_by, "github-copilot")
@@ -40,6 +45,32 @@ test("reasoning effort selects the tier when the name is generic", () => {
   assert.equal(tierFromRequest("copilot-fusion", "xhigh"), "max")
   assert.equal(tierFromRequest("copilot-fusion", "bogus"), "standard")
   assert.equal(tierFromRequest("gpt-6-luna", "high"), undefined)
+})
+
+test("classic Auto model names resolve to Auto routing tiers", () => {
+  assert.equal(isKnownModel("auto"), true)
+  assert.equal(isKnownModel("copilot-auto"), true)
+  assert.equal(isKnownModel("github-copilot/auto"), true)
+  assert.equal(isKnownModel("copilot-auto-intelligence"), true)
+  assert.equal(isKnownModel("gpt-6-luna"), false)
+
+  const base = routeSpecFromRequest("auto")
+  assert.equal(base.family, "auto")
+  assert.equal(base.variant, "balance")
+  assert.equal(base.wire, "balance")
+
+  assert.equal(routeSpecFromRequest("copilot-auto-efficiency").wire, "efficiency")
+  assert.equal(routeSpecFromRequest("copilot-auto-fast", "high").wire, "fast")
+  assert.equal(routeSpecFromRequest("github-copilot/auto#intelligence").wire, "intelligence")
+  assert.equal(routeSpecFromRequest("copilot-auto#efficiency").wire, "efficiency")
+
+  assert.equal(routeSpecFromRequest("copilot-auto", "low").wire, "efficiency")
+  assert.equal(routeSpecFromRequest("copilot-auto", "medium").wire, "balance")
+  assert.equal(routeSpecFromRequest("auto", "high").wire, "intelligence")
+  assert.equal(routeSpecFromRequest("auto", "xhigh").wire, "intelligence")
+  assert.equal(routeSpecFromRequest("auto", "bogus").wire, "balance")
+
+  assert.equal(tierFromRequest("auto"), undefined, "Fusion-only helper ignores Auto models")
 })
 
 test("effort is read from both OpenAI request shapes", () => {

@@ -1,10 +1,10 @@
 /**
  * Translate between OpenAI Chat Completions and Copilot's Responses wire.
  *
- * Fusion often picks a model that only serves `/responses`, while clients
+ * Copilot's router often picks a model that only serves `/responses`, while clients
  * such as OpenCode call `/v1/chat/completions`. The server keeps the client
  * wire on the outside and converts the request/response around the routed
- * inference call, so a Fusion pick is never discarded just because of its
+ * inference call, so a routed pick is never discarded just because of its
  * wire.
  */
 

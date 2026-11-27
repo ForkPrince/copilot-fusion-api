@@ -3,8 +3,8 @@
  *
  * A request built for the anchor is always a valid call to the anchor, so the
  * fallback path simply leaves it alone.
- * When Fusion routes, we swap `model` to the picked id and attach
- * `Copilot-Session-Token` (this is what bills Fusion, with the paid-plan
+ * When a request is routed, we swap `model` to the picked id and attach
+ * `Copilot-Session-Token` (this is what bills the request to Copilot, with the paid-plan
  * 30% discount through 2026-11-30).
  *
  * `options.body` (a pre-parsed JSON object) is used when given, so the

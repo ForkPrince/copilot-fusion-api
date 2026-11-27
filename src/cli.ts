@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** CLI for the standalone Copilot Fusion OpenAI-compatible API. */
+/** CLI for the standalone Copilot Fusion and Auto OpenAI-compatible API. */
 import { DeviceAuth, DeviceLoginError } from "./device.js"
 import { FileCredentialProvider } from "./creds.js"
 import { authFilePath, maskToken } from "./store.js"
@@ -10,9 +10,11 @@ import { describeError } from "./http.js"
 const VERSION = "0.3.0"
 
 function usage(): string {
-  return `copilot-fusion-api ${VERSION}
+  return `copilot-api ${VERSION}
 
-Usage: copilot-fusion-api <command>
+OpenAI-compatible API for Copilot Fusion and Auto routing.
+
+Usage: copilot-api <command>
 
 Commands:
   login     Sign in with GitHub device code (stores a Copilot token locally)
@@ -77,7 +79,7 @@ async function status(): Promise<void> {
   })
   const state = await provider.status()
   if (!state.authenticated) {
-    process.stdout.write("Not logged in. Run `copilot-fusion-api login`.\n")
+    process.stdout.write("Not logged in. Run `copilot-api login`.\n")
     return
   }
   process.stdout.write(`Auth file:     ${state.authFile}\n`)
@@ -112,21 +114,21 @@ async function serve(): Promise<void> {
     deviceAuth: device,
     baseURLOverride: config.copilotBaseURL,
     skewMs: config.skewMs,
-    log: config.debug ? (...args: string[]) => console.error("[copilot-fusion]", ...args) : undefined,
+    log: config.debug ? (...args: string[]) => console.error("[copilot-api]", ...args) : undefined,
   })
   const server = createServer({
     ...config,
     creds: provider,
-    log: config.debug ? (...args: string[]) => console.error("[copilot-fusion]", ...args) : undefined,
+    log: config.debug ? (...args: string[]) => console.error("[copilot-api]", ...args) : undefined,
   })
   server.on("error", (error) => {
-    console.error(`[copilot-fusion] server error: ${describeError(error)}`)
+    console.error(`[copilot-api] server error: ${describeError(error)}`)
     process.exitCode = 1
   })
   server.listen(config.port, config.host, () => {
-    console.error(`[copilot-fusion] OpenAI-compatible API at http://${config.host}:${config.port}/v1`)
-    console.error(`[copilot-fusion] models: copilot-fusion, copilot-fusion-high, copilot-fusion-max`)
-    if (config.apiKey) console.error("[copilot-fusion] API key authentication enabled")
+    console.error(`[copilot-api] OpenAI-compatible API at http://${config.host}:${config.port}/v1`)
+    console.error(`[copilot-api] models: copilot-fusion, copilot-fusion-high, copilot-fusion-max, auto, copilot-auto-efficiency, copilot-auto-balance, copilot-auto-intelligence, copilot-auto-fast`)
+    if (config.apiKey) console.error("[copilot-api] API key authentication enabled")
   })
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.on(signal, () => server.close(() => process.exit(0)))
@@ -165,6 +167,6 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 
 main().catch((error: unknown) => {
   const message = error instanceof DeviceLoginError || error instanceof Error ? error.message : String(error)
-  process.stderr.write(`[copilot-fusion] ${message}\n`)
+  process.stderr.write(`[copilot-api] ${message}\n`)
   process.exitCode = 1
 })

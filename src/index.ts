@@ -1,7 +1,7 @@
 /**
- * copilot-fusion-api
+ * copilot-api
  *
- * A standalone OpenAI-compatible API for GitHub Copilot Fusion. Exposes the
+ * A standalone OpenAI-compatible API for GitHub Copilot Fusion and Auto. Exposes the
  * pieces used by the CLI server so they can also be embedded in other Node
  * programs (or in tests) without depending on any editor integration.
  */

@@ -1,7 +1,7 @@
 {
-  "name": "copilot-fusion-api",
+  "name": "copilot-api",
   "version": "0.3.0",
-  "description": "Standalone OpenAI-compatible API that routes requests through GitHub Copilot Fusion",
+  "description": "Standalone OpenAI-compatible API that routes requests through GitHub Copilot Fusion and Auto",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -16,7 +16,7 @@
     "node": ">=22"
   },
   "bin": {
-    "copilot-fusion-api": "dist/cli.js"
+    "copilot-api": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -32,6 +32,7 @@
   "keywords": [
     "github-copilot",
     "copilot-fusion",
+    "copilot-auto",
     "openai-compatible",
     "api",
     "proxy"

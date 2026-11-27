@@ -10,7 +10,7 @@ export interface FusionOptions {
   readonly anchorModel?: string
   /** Sticky per conversation (default) or a fresh pick for every prompt. */
   readonly route: RouteMode
-  /** Never downgrade to a plain catalog model when Fusion routing fails. */
+  /** Never downgrade to a plain catalog model when routing fails. */
   readonly strict: boolean
   /** Drop `temperature` from routed requests (some routed models 400 on it). */
   readonly stripTemperature: boolean
