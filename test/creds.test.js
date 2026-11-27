@@ -9,7 +9,7 @@ import { authFilePath, clearAuth, maskToken, parseStoredAuth, readAuth, writeAut
 const NOW = 1_800_000_000_000
 
 async function fixture() {
-  const dir = await mkdtemp(join(tmpdir(), "copilot-fusion-test-"))
+  const dir = await mkdtemp(join(tmpdir(), "copilot-api-test-"))
   return { dir, path: join(dir, "auth.json") }
 }
 

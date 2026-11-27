@@ -18,7 +18,7 @@ export interface StoreOptions {
   readonly authFile?: string
 }
 
-/** Default: ~/.config/copilot-fusion/auth.json (%APPDATA% on Windows). */
+/** Default: ~/.config/copilot-api/auth.json (%APPDATA% on Windows). */
 export function authFilePath(options: StoreOptions = {}): string {
   if (options.authFile) return options.authFile
   if (options.configDir) return join(options.configDir, "auth.json")
@@ -28,7 +28,7 @@ export function authFilePath(options: StoreOptions = {}): string {
   const base = process.platform === "win32" && env.APPDATA
     ? env.APPDATA
     : join(homedir(), ".config")
-  return join(base, "copilot-fusion", "auth.json")
+  return join(base, "copilot-api", "auth.json")
 }
 
 function text(value: unknown): string | undefined {

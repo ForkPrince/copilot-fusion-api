@@ -10,4 +10,4 @@ services:
       PORT: 8080
       API_KEY: ${API_KEY:-local-secret}
     volumes:
-      - ${HOME}/.config/copilot-fusion:/root/.config/copilot-fusion
+      - ${HOME}/.config/copilot-api:/root/.config/copilot-api
