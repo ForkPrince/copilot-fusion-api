@@ -15,10 +15,6 @@ Use GitHub Copilot Fusion and Auto from any OpenAI client. The server picks a mo
 
 Node 22 or newer and a GitHub account with an active Copilot seat.
 
-```sh
-npm install -g copilot-api
-```
-
 ## Sign in
 
 ```sh
